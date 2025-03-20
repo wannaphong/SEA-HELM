@@ -6,6 +6,7 @@ mt-bench:
   metric_file: seahelm_tasks/multi_turn/mt_bench/mt_bench.py
   metric_class: MTBenchMetric
   metric: weighted_win_rate
+  batch_openai_calls: True
   judge_model: gpt-4-1106-preview
   judge_seed: 1234
   judge_temperature: 0

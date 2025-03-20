@@ -7,7 +7,7 @@ logger = get_logger(__name__)
 
 
 def aggregate_pragmatics_metrics(metrics: dict, lang="id") -> None:
-    logger.info("---------- Task: PRAGMATICS ----------", lang.upper())
+    logger.info("---------- Task: PRAGMATICS (%s) ----------", lang.upper())
     PRAGMATICS_PHENOMENA = ["scalar_implicatures", "presuppositions"]
     PRAGMATICS_TASKS = [
         "pragmatic-single",

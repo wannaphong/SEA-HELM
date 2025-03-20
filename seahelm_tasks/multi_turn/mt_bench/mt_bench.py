@@ -12,7 +12,7 @@ from seahelm_tasks.multi_turn.mt_bench.mt_bench_prompts import (
     JUDGE_PROMPTS,
 )
 from seahelm_tasks.seahelm_metric import SeaHelmMetric
-from serving.openai_serving import OPENAI_MODELS, OpenAIServing
+from serving.openai_serving import OPENAI_MODELS, OpenAIServing, LiteLLMServing
 from utils import get_error_count
 
 logger = get_logger(__name__)
@@ -26,7 +26,7 @@ def evaluate_mt_bench_task(
         lang.upper(),
         task_name.upper(),
     )
-    logger.info("Evaluating %s using %s", task_name.upper(), type(Metric).__name__)
+    logger.info("Evaluating %s using %s", task_name.upper(), Metric.__name__)
     evaluation_metric = Metric(
         inference_df=inference_df,
         task_config=task_config,
@@ -55,8 +55,16 @@ class MTBenchMetric(SeaHelmMetric):
             inference_df=inference_df, task_config=task_config, task=task, lang=lang
         )
         self.judge_model = task_config["judge_model"]
+        self.batch_openai_calls = task_config.get("batch_openai_calls", True)
         if self.judge_model in OPENAI_MODELS:
-            self.judge = OpenAIServing(self.judge_model)
+            if self.batch_openai_calls:
+                self.judge = OpenAIServing(self.judge_model)
+            else:
+                model_args = {}
+                for key in task_config:
+                    if "litellm_" in key:
+                        model_args[key.replace("litellm_", "")] = task_config[key]
+                self.judge = LiteLLMServing(self.judge_model, **model_args)
         else:
             raise ValueError(f"Unsupported judge model: {self.judge_model}")
 
@@ -74,7 +82,81 @@ class MTBenchMetric(SeaHelmMetric):
             x["category"] for x in self.inference_df["metadata"]
         ]
 
-    def get_llm_judgments(self):
+    def get_llm_judgements(self):
+        llm_judgement_file_path = os.path.join(
+            self.output_dir,
+            os.path.basename(self.model_name),
+            "inference",
+            f"{os.path.basename(self.model_name)}_{self.task}_{self.lang}_{self.baseline_model}_{self.judge_model}_judgement.jsonl",
+        )
+
+        if self.use_cached_results and os.path.exists(llm_judgement_file_path):
+            judgement_df = pd.read_json(llm_judgement_file_path, lines=True)
+        else:
+            messages = []
+            ids = []
+            for i, row in self.inference_df.iterrows():
+                responses = row[self.response_column]
+                baselines = row["baselines"][self.baseline_model]
+                questions = row["prompts"]
+
+                is_with_ref = row["category"] in CATEGORIES_WITH_REFERENCE
+                if is_with_ref:
+                    references = row["references"]
+                    prompts = JUDGE_PROMPTS["with-reference"]
+                else:
+                    prompts = JUDGE_PROMPTS["without-reference"]
+
+                for turn in range(len(responses)):
+                    for baseline_position in ["baseline-before", "baseline-after"]:
+                        info = {}
+                        for i in range(turn + 1):
+                            info[f"question_{i+1}"] = questions[i]["text"]
+                            info[f"answer_a_{i+1}"] = (
+                                responses[i]
+                                if baseline_position == "baseline-after"
+                                else baselines[i]
+                            )
+                            info[f"answer_b_{i+1}"] = (
+                                baselines[i]
+                                if baseline_position == "baseline-after"
+                                else responses[i]
+                            )
+
+                            if is_with_ref:
+                                info[f"ref_answer_{i+1}"] = references[i]
+
+                        messages.append(
+                            [
+                                {
+                                    "role": "system",
+                                    "content": prompts[turn]["system_prompt"],
+                                },
+                                {
+                                    "role": "user",
+                                    "content": prompts[turn]["prompt_template"].format(
+                                        **info
+                                    ),
+                                },
+                            ]
+                        )
+                        ids.append(
+                            f"{row['question_id']}_turn{i+1}_{baseline_position}",
+                        )
+
+            batch_responses = self.judge.batch_generate(messages)
+            batch_responses = [x.json() for x in batch_responses]
+            judgement_df = pd.DataFrame(batch_responses)
+            judgement_df["custom_id"] = ids
+            judgement_df.to_json(
+                llm_judgement_file_path,
+                orient="records",
+                lines=True,
+                force_ascii=False,
+            )
+        return judgement_df
+
+    def get_batched_llm_judgments(self):
         llm_judgement_file_path = os.path.join(
             self.output_dir,
             os.path.basename(self.model_name),
@@ -238,19 +320,33 @@ class MTBenchMetric(SeaHelmMetric):
         df.to_json(llm_batch_file_path, orient="records", lines=True, force_ascii=False)
 
     def calculate_metrics(self):
-        judgement_df = self.get_llm_judgments()
+        if self.batch_openai_calls:
+            judgement_df = self.get_batched_llm_judgments()
+        else:
+            judgement_df = self.get_llm_judgements()
+
         judgement_meta_df = pd.DataFrame(
             judgement_df["custom_id"].map(lambda x: x.split("_")).to_list(),
             columns=["question_id", "turn", "order"],
         )
         judgement_df = pd.concat([judgement_df, judgement_meta_df], axis=1)
-        judgement_df["verdict"] = judgement_df.apply(
-            lambda row: self.parse_judgment(
-                row["response"]["body"]["choices"][0]["message"]["content"],
-                row["order"] == "baseline-before",
-            ),
-            axis=1,
-        )
+
+        if self.batch_openai_calls:
+            judgement_df["verdict"] = judgement_df.apply(
+                lambda row: self.parse_judgment(
+                    row["response"]["body"]["choices"][0]["message"]["content"],
+                    row["order"] == "baseline-before",
+                ),
+                axis=1,
+            )
+        else:
+            judgement_df["verdict"] = judgement_df.apply(
+                lambda row: self.parse_judgment(
+                    row["choices"][0]["message"]["content"],
+                    row["order"] == "baseline-before",
+                ),
+                axis=1,
+            )
 
         all_judgments = []
         for _, row in self.inference_df.iterrows():

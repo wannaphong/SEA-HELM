@@ -6,11 +6,11 @@
 # Instead of a list, use <language>: "all" to specify all tasks to be run.
 
 seahelm:
-  id: ["sentiment", "qa", "metaphor", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "mp-r", "pragmatic-single", "pragmatic-pair", "if-eval", "mt-bench"]
-  vi: ["sentiment", "qa", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "if-eval", "mt-bench"]
-  th: ["sentiment", "qa", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "if-eval", "mt-bench"]
-  ta: ["sentiment", "qa", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "mp-r", "pragmatic-single", "pragmatic-pair"]
-  tl: ["sentiment", "belebele-qa-mc", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "if-eval", "mt-bench", "kalahi-mc"]
+  # id: ["sentiment", "qa", "metaphor", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "mp-r", "pragmatic-single", "pragmatic-pair", "if-eval", "mt-bench"]
+  # vi: ["sentiment", "qa", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "if-eval", "mt-bench"]
+  th: ["sentiment", "qa", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "if-eval"] #, "mt-bench"]
+  # ta: ["sentiment", "qa", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "mp-r", "pragmatic-single", "pragmatic-pair"]
+  # tl: ["sentiment", "belebele-qa-mc", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "if-eval", "mt-bench", "kalahi-mc"]
 
 seahelm_plus:
   id: ["sentiment", "qa", "metaphor", "toxicity", "translation-en-xx", "translation-xx-en", "abssum", "causal", "nli", "mp-r", "pragmatic-single", "pragmatic-pair", "if-eval", "mt-bench"]
